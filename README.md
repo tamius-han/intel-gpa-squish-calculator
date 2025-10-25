@@ -10,7 +10,11 @@ There's two solutions for that issue.
 1. Pay money for NinjaRipper
 2. Save some money and use this project to fix the squish for you (asterisks apply).
 
-Offline usage:
+### Online:
+
+https://tamius-han.github.io/intel-gpa-squish-calculator/
+
+### Offline usage:
 
 * Download/clone this project
 * open index.html with any modern browser
