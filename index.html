@@ -1,0 +1,809 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Intel GPA squish fix</title>
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Source+Code+Pro:ital,wght@0,200..900;1,200..900&display=swap" rel="stylesheet">
+    <style>
+      :root {
+        font-family: "Source Code Pro", system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+        --primary-color: #fa6;
+        --primary-dark: #d07a00;
+        --bg-color: #101010;
+        --form-bg: #161616;
+        --field-bg: #1d1d1d;
+        --field-border: #2d2d2d;
+        --button-bg: #000;
+        --button-border: #685335;
+        --text-color: #c4c2c1;
+        --text-bright: #f2f2f2;
+        --text-brighter: #fff;
+        --helper-color: #6b7280;
+        --hint-color: #af9270;
+
+        --info-border: #2d2d4d;
+        --info-text: #9191d1;
+        --info-bg: #1d1d2d;
+
+        --warn-border: var(--primary-dark);
+        --warn-bg: #2d2010;
+      }
+
+      body {
+        padding: 0 1.5rem;
+        background: var(--bg-color);
+        color: var(--text-color);
+        max-width: 1280px;
+        margin: auto;
+
+        display: flex;
+        flex-direction: column;
+        min-height: 100dvh;
+
+        main {
+          padding: 1.5rem 0;
+          flex: 1;
+        }
+
+        font-size: 14px;
+
+        footer {
+          padding: 1rem 0rem;
+          border-top: 1px dashed var(--field-border);
+          font-size: 0.85rem;
+        }
+      }
+
+      h1, h2, h3, h4, h5, h6 {
+        color: #f3d9a5;
+        font-weight: 600;
+        margin: 0 0 12px;
+      }
+
+      a {
+        color: var(--primary-dark);
+
+        &:hover {
+          color: var(--primary-color);
+        }
+      }
+
+      h1 { font-size: 1.8rem; }
+
+      .container {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 18px;
+      }
+
+      @media (max-width: 800px) {
+        .container { grid-template-columns: 1fr; }
+      }
+
+      .field {
+        background: var(--field-bg);
+        border: 1px solid var(--field-border);
+        padding: 12px;
+        border-radius: 8px;
+        box-shadow: 0 1px 3px rgba(161, 161, 239, 0.02);
+      }
+
+      .info-field, .warn-field {
+        border-radius: 0.25rem;
+        /* align-items: center; */
+        padding: 1rem;
+
+        .icon {
+          font-size: 2rem;
+          color: var(--text-bright);
+          padding-right: 0.5rem;
+        }
+
+        b, p {
+          margin: 0;
+          padding: 0;
+        }
+      }
+
+      .info-field {
+        border: 1px solid var(--info-border);
+        background-color: var(--info-bg);
+        color: var(--info-text);
+
+        b {
+          color: var(--text-bright);
+        }
+      }
+
+      .warn-field {
+        border: 1px solid var(--warn-border);
+        background-color: var(--warn-bg);
+        color: var(--warn-text);
+
+        b {
+          color: var(--text-bright);
+        }
+      }
+
+      .row {
+        display: flex;
+        flex-direction: row;
+      }
+      .col {
+        display: flex;
+        flex-direction: column;
+      }
+
+      .controls {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        margin-bottom: 10px;
+      }
+
+      .buttons-center {
+        margin-top: 1rem;
+        margin-bottom: 1rem;
+        display: flex;
+        flex-direction: row;
+        justify-content: center;
+        gap: 1rem
+      }
+
+      .buttons-between {
+        display: flex;
+        flex-direction: row;
+        margin-top: 1rem;
+        margin-bottom: 1rem;
+        gap: 1rem;
+        justify-content: space-between;
+        align-items: center;
+      }
+
+      button {
+        appearance: none;
+        border: 1px solid var(--button-border);
+        background: var(--button-bg);
+        padding: 8px 10px;
+        border-radius: 6px;
+        cursor: pointer;
+        color: var(--text-brighter);
+        font-size: 1.05rem;
+        font-weight: 600;
+
+        &:hover {
+          background-color: var(--primary-dark);
+          border-color: var(--primary-color);
+        }
+      }
+
+      .warning, .error {
+        &:fist-of-type {
+          margin-top: 2rem;
+        }
+        &:last-of-type {
+          margin-bottom: 2rem;
+        }
+      }
+
+      /* Dropzones */
+      .dropzone {
+        border: 2px dashed var(--primary-color);
+        border-radius: 8px;
+        min-height: 120px;
+        max-height: 200px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-direction: column;
+        text-align: center;
+        color: var(--hint-color);
+        background-color: var(--form-bg);
+        overflow: hidden;
+
+        padding: 2rem;
+
+        canvas {
+          margin: -2rem;
+          height: 100%;
+          width: 100%;
+          display: block;
+          object-fit: contain;
+        }
+
+        .dragover {
+          border-color: #ef763a;
+          background: rgba(229, 142, 70, 0.04);
+          color: var(--primary-color);
+        }
+      }
+
+      /* Hide default file input */
+      .hidden-input, input[type="file"] {
+        display: none;
+      }
+
+      .meta {
+        font-size: 13px;
+        color: #7a7e6c;
+        margin-top: 8px;
+      }
+
+      .helper {
+        font-size: 12px;
+        color: #6b7280;
+        margin-top: 6px;
+      }
+
+      .hidden {
+        display: none !important;
+      }
+    </style>
+
+    <!-- Styling for checkboxes and inputs -->
+    <style>
+      form {
+        margin-top: 1rem;
+        margin-bottom: 1rem;
+        padding: 1rem 0.5rem 0;
+        border: 1px dashed var(--primary-dark);
+        border-width: 1px 0px;
+        background-color: var(--form-bg);
+      }
+
+      input, select, textarea {
+        background: var(--field-bg);
+        border: 1px solid var(--field-border);
+        color: var(--text-color);
+        padding: 4px 6px;
+        border-radius: 6px;
+      }
+
+      /* Checkbox container */
+      .checkbox-label {
+        display: flex;
+        flex-direction: column;
+        font-size: 0.95rem;
+        color: var(--text-color);
+        margin-top: 0.25rem;
+        margin-bottom: 0.25rem;
+        color: var(--text-bright);
+      }
+
+      /* Row for checkbox + main label */
+      .checkbox-row {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+      }
+
+
+      /* Custom checkbox */
+      .checkbox-label input[type="checkbox"] {
+        -webkit-appearance: none;
+        appearance: none;
+        width: 1.2rem;
+        height: 1.2rem;
+        border: 1px solid var(--field-border);
+        border-radius: 4px;
+        background: var(--bg-color);
+        cursor: pointer;
+        position: relative;
+        display: inline-block;
+      }
+
+      /* Checked state */
+      .checkbox-label input[type="checkbox"]:checked {
+        background: var(--primary-color);
+        border-color: var(--primary-color);
+      }
+
+      /* Centered checkmark */
+      .checkbox-label input[type="checkbox"]:checked::after {
+        content: '';
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        width: 4px;
+        height: 8px;
+        border: solid var(--bg-color);
+        border-width: 0 3px 3px 0;
+        transform: translate(-50%, calc(-50% - 1px)) rotate(45deg);
+      }
+
+      /* Hint text under label */
+      .checkbox-label .hint {
+        font-size: 0.85rem;
+        color: var(--hint-color);
+        margin-left: 2.1rem;
+        margin-top: -0.25rem;
+      }
+
+      .inline-field {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        margin-top: 0.5rem;
+      }
+
+      .inline-field input {
+        width: 160px;
+        background: var(--bg-color);
+        border: 1px solid var(--field-border);
+        color: var(--text-bright);
+        padding: 4px 6px;
+        border-radius: 6px;
+      }
+    </style>
+
+    <!-- Style for key shortcuts / resize label -->
+    <style>
+      /* Results area */
+      .results {
+        text-align: center;
+
+        .result-summary {
+          display: flex;
+          flex-direction: row;
+          gap: 1rem;
+          width: 100%;
+        }
+
+        .result-segment {
+          flex: 1 1 0;
+          text-align: left;
+
+          h2 {
+            text-align: center;
+          }
+
+          .scale {
+            /* margin-top: 1.25rem; */
+            margin-bottom: 0.5rem;
+            font-size: 2.5rem;
+            text-align: center !important;
+            color: var(--text-brighter);
+
+            .axis {
+              color: #fa6;
+            }
+          }
+
+          .scale-shortcut {
+            width: 100;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            margin-left: -1rem;
+            margin-right: -1rem;
+
+            >* {
+              margin-left: 1rem;
+              margin-right: 1rem;
+            }
+
+            .label {
+              font-size: 0.8rem;
+              text-transform: uppercase;
+              opacity: 0.75;
+              margin-top: -0.5rem;
+              margin-bottom: 0.25rem;
+              font-weight: 300;
+            }
+          }
+
+          .key-sequence {
+            display: flex;
+            flex-direction: row;
+            margin-left: -0.125rem;
+            margin-right: -0.125rem;
+            justify-content: center;
+
+            .key-tile {
+              margin-left: 0.25rem;
+              margin-right: 0.25rem;
+
+              width: 2rem;
+
+              .key {
+                font-size: 1rem;
+                width: 2rem;
+                height: 2rem;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+
+                border-radius: 0.5rem;
+
+                color: var(--text-brighter);
+                background-color: #000000;
+                border: 1px solid #3d3d3d;
+              }
+            }
+          }
+        }
+
+
+        /* Manual / Convert container */
+        .result-summary .result-segment + .result-segment {
+          margin-left: 1rem;
+        }
+      }
+
+    </style>
+
+    <!-- popups -->
+    <style>
+      .tutorial-popup-container {
+        position: fixed;
+        left: 0;
+        top: 0;
+        width: 100dvw;
+        height: 100dvh;
+        backdrop-filter: blur(0.25rem) brightness(50%);
+
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+      }
+
+      #show-tutorial {
+        .popup {
+          margin-top: 5rem;
+        }
+      }
+
+      #tutorial-popup {
+        .popup {
+          margin-top: 2rem;
+          max-height: calc(100dvh - 4rem);
+
+          img {
+            max-width: 100%;
+            height: auto;
+            margin:auto;
+          }
+        }
+
+      }
+
+      .popup {
+        background-color: #1d1d1d;
+        border: 1px solid #2d2d2d;
+        border-radius: 0.5rem;
+        padding: 1rem;
+        overflow: auto;
+
+        .popup-button-row {
+          display: flex;
+          flex-direction: row;
+          justify-content: end;
+          gap: 0.5rem;
+        }
+
+        .tutorial-navigation {
+          display: flex;
+          flex-direction: row;
+          justify-content: space-between;
+          gap: 0.5rem;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div id="show-tutorial" class="tutorial-popup-container">
+      <div class="popup">
+        <h1>Hello there.</h1>
+        <p id="show-tutorial-last_visited"></p>
+
+        <div class="popup-button-row">
+          <button onclick="showTutorial(1)">Yes please</button>
+          <button onclick="hidePopup()">No thanks</button>
+          <button onclick="hidePopup()">I know more than you</button>
+        </div>
+      </div>
+    </div>
+    <div id="tutorial-popup" class="tutorial-popup-container hidden">
+      <div class="popup">
+        <h1>Quick notes</h1>
+        <div id="tutorial-stage-1">
+          <p>You're probably here because you're extracting character models from games.</p>
+          <h2>Landmarks</h2>
+          <p>First, you need to acquire a "landmark". Landmark is an object that:</p>
+          <ul>
+            <li>Is NOT animated in any way (physics objects are fine)</li>
+            <li>Was not stretched by level designers when they placed it into a level</li>
+            <li>Needs to be one contiguous object</li>
+          </ul>
+          <p>
+            "Perfect cube" boxes are good candidates for a landmark. So are various decorative objects.
+            You should probably avoid picking terrain objects (rocks, trees) as your landmark.
+          </p>
+          <p>
+            After picking a landmark, you need to export landmark's geometry from the <code>input</code>
+            section of the resources sidebar.
+          </p>
+          <p>This goes into the "Landmark source geometry" box.</p>
+          <img src="./img/explain-landmark.webp" />
+          <p></p>
+          <div class="tutorial-navigation" style="justify-content: end">
+            <button onclick="showTutorial(2)">NEXT</button>
+          </div>
+        </div>
+
+        <div id="tutorial-stage-2">
+          <h2>Output geometry</h2>
+          <p>After you exported your landmark from the input section, you need to export it again — but this time, from the <b>output</b> section of the resources sidebar.</p>
+          <p>This is goes into <b>Output geometry</b> box.</p>
+
+          <p style="text-align: center;">
+            <img src="./img/explain-output.webp" />
+          </p>
+          <div class="tutorial-navigation ">
+            <button onclick="showTutorial(1)">BACK</button>
+            <button onclick="showTutorial(3)">NEXT</button>
+          </div>
+        </div>
+
+        <div id="tutorial-stage-3" class="hidden">
+          <h2>Results</h2>
+          <p>After you provide both landmark and output geometry, the page will calculate scaling factors you need to apply in order to unsquish your character.</p>
+          <p>Import your character into Blender, and scale your character along approrpriate axes by appropriate amounts.</p>
+          <p><b>NOTE: scaling factor for <b>x</b> should roughly match your in-game resolution's aspect ratio.</b> If it doesn't, your landmark is bad.</p>
+          <p style="text-align:center">
+            <img src="./img/explain-results.png" />
+          </p>
+          <p></p>
+          <div class="tutorial-navigation ">
+            <button onclick="showTutorial(2)">BACK</button>
+            <button onclick="showTutorial(4)">NEXT</button>
+          </div>
+        </div>
+
+        <div id="tutorial-stage-4" class="hidden">
+          <h2>Other things</h2>
+          <p>If your output geometry contains both your landmark and your character, you will get an option to automatically unstretch your character.</p>
+
+          <img src="./img/explain-output-2.webp" />
+          <p class="hint">You are allowed to select your output geometry like so.</p>
+          <div class="tutorial-navigation ">
+            <button onclick="showTutorial(3)">BACK</button>
+            <button onclick="showTutorial()">Finish</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <main>
+      <h1>Intel GPA squish calculator</h1>
+      <p>
+        Trying to export your character from Intel GPA? Don't want to bother with manually unsquishing your character model? Use this.
+      </p>
+      <p>
+        No, there's no validation on any of the inputs — but as long as you don't enter any nonsense deliberately, things shouldn't break.
+      </p>
+
+      <div class="buttons-between">
+        <div>
+          <button onclick="showTutorial(1)">Help</button>
+          <a href="https://stuff.tamius.net/sacred-texts/2024/09/18/how-to-print-your-guild-wars-2-character-or-any-game-really/" target="_blank">What is this?</a>
+        </div>
+      </div>
+
+      <div class="container">
+        <section class="field" aria-labelledby="fieldA">
+          <h3 id="fieldA">Landmark source geometry</h3>
+          <div class="controls">
+            <button type="button" data-trigger="fileLandmark">Select OBJ file</button>
+            <div class="meta" id="metaLandmark">No file selected</div>
+          </div>
+
+          <div class="dropzone" id="dropLandmark" tabindex="0" aria-label="Drop OBJ file here for Field A">
+            <div id="landmark-nofile" class="drop-file-msg">
+              <div>Drop an <strong>.obj</strong> file here</div>
+              <div class="helper">or click <em>Select OBJ file</em></div>
+            </div>
+            <canvas id="landmark-canvas" class="hidden" width="500" height="200" style="background: transparent"></canvas>
+          </div>
+
+          <input class="hidden-input" id="inputLandmark" type="file" accept=".obj" />
+        </section>
+
+
+        <section class="field" aria-labelledby="fieldB">
+          <h3 id="fieldB">Output geometry</h3>
+          <div class="controls">
+            <button type="button" data-trigger="fileOutput">Select OBJ file</button>
+            <div class="meta" id="metaOutput">No file selected</div>
+          </div>
+
+
+          <div class="dropzone" id="dropOutput" tabindex="0" aria-label="Drop OBJ file here for Field B">
+            <div id="output-nofile" class="drop-file-msg">
+              <div>Drop an <strong>.obj</strong> file here</div>
+              <div class="helper">or click <em>Select OBJ file</em></div>
+            </div>
+            <canvas id="output-canvas" class="hidden" width="500" height="200" style="background: transparent"></canvas>
+          </div>
+
+
+          <input class="hidden-input" id="inputOutput" type="file" accept=".obj" />
+        </section>
+      </div>
+
+      <div class="buttons-center">
+        <button onclick="calculate()">CALCULATE</button>
+        <button onclick="reset()">RESET</button>
+      </div>
+
+      <div id="lpt1-info-box" class="buttons-center">
+        <div class="info-field row">
+          <div class="icon">[i]</div>
+          <div class="col">
+            <b>LPT: You don’t need to add each file separately.</b>
+            <p>You can drag both of them into either zone, and the app will figure out the rest.</p>
+          </div>
+        </div>
+      </div>
+
+      <section id="warnings_container" class="warnings">
+        <div id="error_objects_not_matching" class="error hidden">
+          <h1>Input and output objects have different number of vertices</h1>
+          <p>Source geometry and output geometry must contain the same object.</p>
+        </div>
+
+        <div id="error_too_many_source_objects" class="error hidden">
+          <div class="warn-field row">
+            <div class="icon">[!]</div>
+            <div class="col">
+              <b>Too many objects in source geometry.</b>
+              <p>There should be exactly one contiguous objects in landmark source geometry, but <span id="etmso_count"></span> were detected.</p>
+            </div>
+          </div>
+        </div>
+
+        <div id="warning_ar_not_matching" class="warning hidden">
+          <div class="warn-field row">
+            <div class="icon">[!]</div>
+            <div class="col">
+              <b>X scale factor looks sus</b>
+              <p>It is expected that X scale factor is roughly equal to your aspect ratio. This is fine if:</p>
+              <ul>
+                <li>You're running your game in windowed mode</li>
+                <li>You're running your game at non-native resolution</li>
+              </ul>
+              <p>Calculated aspect ratio is <span id="arnm_result"></span>.</p>
+              <p>However, it may also be a sign that something went wrong. If none of the above apply to you, you should try exporting a different object as your landmark.</p>
+              <p>
+                This can also happen if your <code>.obj</code> file contained your (or any other) character (or any other animated object).
+                <b>Note that landmark should be present in the output geometry as well. Landmark should also NOT contain any animated items.</b>
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="results-ready" class="results hidden">
+        <h1>Cool.</h1>
+        <p>You can import your character into Blender.</p>
+
+        <div class="result-summary field">
+          <div id="results-manual" class="result-segment">
+            <h2>Manual adjustment</h2>
+
+            <p>Export your character from intel GPA, launch Blender, and import your character.</p>
+            <p>Scale your character along X and Y by the following amounts in order to undo the squish:</p>
+
+            <div>
+              <p class="scale"><span class="axis">X:</span> <span id="scale_x"></span></p>
+              <div class="scale-shortcut">
+                <div class="label">Blender shortcut</div>
+                <div id="key_sequence_x" class="key-sequence"></div>
+              </div>
+            </div>
+
+            <div>
+              <p class="scale"><span class="axis">Y:</span> <span id="scale_y"></span></p>
+              <div class="scale-shortcut">
+                <div class="label">Blender shortcut</div>
+                <div id="key_sequence_y" class="key-sequence"></div>
+              </div>
+            </div>
+          </div>
+          <div id="results-fix-and-save" class="result-segment hidden">
+            <h2>Convert and save</h2>
+
+            <p>Alternatively, you can fix scaling on your model on this page and save the result.</p>
+
+            <form id="fixForm" onsubmit="event.preventDefault(); fixAndSave();">
+              <!-- Remove landmarks -->
+              <label for="cb_remove_landmarks" class="checkbox-label">
+                <div class="checkbox-row">
+                  <input type="checkbox" id="cb_remove_landmarks" />
+                  <span>Remove landmark from output geometry</span>
+                </div>
+                <span class="hint">Removes landmark from exported output.</span>
+              </label>
+
+              <!-- Mirror Z axis -->
+              <label for="cb_invert_handedness" class="checkbox-label">
+                <div class="checkbox-row">
+                  <input type="checkbox" id="cb_invert_handedness" />
+                  <span>Mirror Z axis</span>
+                </div>
+                <span class="hint">Does your character appear mirrored? Check this.</span>
+              </label>
+
+              <!-- Flip normals -->
+              <label for="cb_flip_normals" class="checkbox-label">
+                <div class="checkbox-row">
+                  <input type="checkbox" id="cb_flip_normals" />
+                  <span>Flip normals</span>
+                </div>
+                <span class="hint">Generally trust the default — but if your character is more red than orange, then this checkbox should be ticked.</span>
+              </label>
+
+              <!-- Split by loose parts -->
+              <label for="cb_split_loose" class="checkbox-label">
+                <div class="checkbox-row">
+                  <input type="checkbox" id="cb_split_loose" />
+                  <span>Split by loose parts</span>
+                </div>
+                <span class="hint">This saves you 2 clicks in Blender when you start fixing your meshes.</span>
+              </label>
+
+              <!-- Resize / move feet -->
+              <label for="cb_resize" class="checkbox-label">
+                <div class="checkbox-row">
+                  <input type="checkbox" id="cb_resize" />
+                  <span>Resize your character</span>
+                </div>
+                <span class="hint">Also moves feet to origin.</span>
+              </label>
+              <label class="inline-field">
+                <span>Approximate height of model (units/mm):</span>
+                <input type="number" id="i_size" min="0" step="0.1" placeholder="optional" />
+              </label>
+
+              <div class="buttons-center">
+                <button type="submit" id="fixAndSaveBtn">Fix and save</button>
+              </div>
+            </form>
+            <p>
+              Note: auto-conversion happens based on some assumptions, which may not be correct. If you don't get the result you
+              expected, go back to Intel GPA/Frame Analyzer and:
+              <ol>
+                <li>Select <i>ONLY</i> your landmark in the scene</li>
+                <li>Export your landmark from 'output' section</li>
+                <li>Drag your landmark that you exported from 'INPUT' section into 'source geometry' box</li>
+                <li>Drag your landmark that you exported from 'OUTPUT' section into 'output geometry' box</li>
+                <li>Drag your character (or whatever you're extracting from your game) into Blender and manually scale the model the way this page tells you to.</li>
+              </ol>
+            </p>
+
+
+          </div>
+        </div>
+      </section>
+    </main>
+    <footer>
+      Whipped together by Tamius Han.
+      <a href="https://tamius.net/">website</a>;
+      <a href="https://github.com/tamius-han/">github::tamius-han</a> (<a href="https://github.com/tamius-han/intel-gpa-squish-calculator">this repo</a>);
+      other shit I do (mostly mini-painting n shit):
+      <a href="https://bsky.app/profile/tamius-han.bsky.social">bluesky::tamius-han</a>;
+      <a href="https://www.instagram.com/shaman_urkog/">insta::@shaman_urkog</a>;
+      <br />
+        AI disclosure: processing of 3D objects was outsourced to ChatGPT. UI design and design decisions that make it useful is mostly by me.
+    </footer>
+    <script src="./lib/gl-matrix.min.js"></script>
+    <script src="./gpt-gl.js"></script>
+    <script src="./calculator.js"></script>
+    <script src="./setup.js"></script>
+  </body>
+</html>
