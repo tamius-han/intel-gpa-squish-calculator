@@ -282,6 +282,7 @@ function setConversionDefaults() {
   document.getElementById('cb_remove_landmarks').checked = true;
   document.getElementById('cb_invert_handedness').checked = true;
   document.getElementById('cb_split_loose').checked = true;
+  document.getElementById('cb_fill_holes').checked = true;
   document.getElementById('cb_resize').checked = true;
   document.getElementById('i_size').value = 100;
 }

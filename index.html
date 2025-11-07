@@ -748,13 +748,22 @@
                 <span class="hint">Generally trust the default — but if your character is more red than orange, then this checkbox should be ticked.</span>
               </label>
 
-              <!-- Split by loose parts -->
+               <!-- Fill holes -->
               <label for="cb_split_loose" class="checkbox-label">
                 <div class="checkbox-row">
                   <input type="checkbox" id="cb_split_loose" />
-                  <span>Split by loose parts</span>
+                  <span>Fill holes</span>
                 </div>
                 <span class="hint">This saves you 2 clicks in Blender when you start fixing your meshes.</span>
+              </label>
+
+              <!-- Split by loose parts -->
+              <label for="cb_fill_holes" class="checkbox-label">
+                <div class="checkbox-row">
+                  <input type="checkbox" id="cb_fill_holes" />
+                  <span>Split by loose parts</span>
+                </div>
+                <span class="hint">(The correct jargon term is "edge loops" i think)</span>
               </label>
 
               <!-- Resize / move feet -->
@@ -801,7 +810,7 @@
       <br />
         AI disclosure: processing of 3D objects was outsourced to ChatGPT. UI design and design decisions that make it useful is mostly by me.
     </footer>
-    <script src="./lib/gl-matrix.min.js"></script>
+    <script src="./fill.js"></script>
     <script src="./gpt-gl.js"></script>
     <script src="./calculator.js"></script>
     <script src="./setup.js"></script>

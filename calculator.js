@@ -222,8 +222,115 @@ function normalizeResults(result) {
 function getObjects(string) {
   const geometry = readObj(string);
   const objects = groupObjects_global(geometry);
+
   // const objects = [geometry];
+
   return objects;
+}
+
+function assignMeshCategories(report, thinThreshold = 0.0125) {
+  console.info('[assignMeshCategories] categorizing meshes from report:', report);
+
+  const newReport = {
+    object: [],
+    "o-filled": [],
+    "o-filled_non-manifold": [],
+    "o-filled_self-intersect": [],
+    "o-fill-failed": [],
+    "self-intersecting": [],
+    "non-manifold": [],
+    sheet: []
+  };
+
+  // Helper: check if object has at least one unfilled edge loop
+  const hasUnfilledLoops = (obj) => {
+    const loops = detectEdgeLoops(obj);
+    return loops.length > 0;
+  };
+
+  const categorizeObject = (obj, isFilled) => {
+    const manifold = obj.faces && obj.faces.length > 0 ? isManifold(obj.faces) : false;
+    const selfIntersect = obj.faces && obj.faces.length > 0 ? hasSelfIntersections(obj.vertices, obj.localFaces ?? obj.faces) : false;
+    const thinAndUnfilled = isObjectThinOrFlat(obj, thinThreshold) && hasUnfilledLoops(obj);
+
+    if (thinAndUnfilled) {
+      obj.name = `sheet_${newReport.sheet.length + 1}`;
+      newReport.sheet.push(obj);
+      return;
+    }
+
+    if (!isFilled) {
+      if (!manifold) {
+        obj.name = `non-manifold_${newReport["non-manifold"].length + 1}`;
+        newReport["non-manifold"].push(obj);
+      } else if (selfIntersect) {
+        obj.name = `self-intersecting_${newReport["self-intersecting"].length + 1}`;
+        newReport["self-intersecting"].push(obj);
+      } else {
+        obj.name = `object_${newReport.object.length + 1}`;
+        newReport.object.push(obj);
+      }
+    } else { // filled objects
+      if (!manifold) {
+        obj.name = `o-filled_non-manifold_${newReport["o-filled_non-manifold"].length + 1}`;
+        newReport["o-filled_non-manifold"].push(obj);
+      } else if (selfIntersect) {
+        obj.name = `o-filled_self-intersect_${newReport["o-filled_self-intersect"].length + 1}`;
+        newReport["o-filled_self-intersect"].push(obj);
+      } else if (report.fillFailed.includes(obj)) {
+        obj.name = `o-fill-failed_${newReport["o-fill-failed"].length + 1}`;
+        newReport["o-fill-failed"].push(obj);
+      } else {
+        obj.name = `o-filled_${newReport["o-filled"].length + 1}`;
+        newReport["o-filled"].push(obj);
+      }
+    }
+  };
+
+  // Process all objects from the report
+  for (const obj of report.unchanged) {
+    categorizeObject(obj, false);
+  }
+  for (const obj of report.filledAll) {
+    categorizeObject(obj, true);
+  }
+
+  // Flatten objects in desired export order
+  const objectsWithCategoryData = [
+    ...newReport.object,
+    ...newReport["o-filled"],
+    ...newReport["o-filled_non-manifold"],
+    ...newReport["o-filled_self-intersect"],
+    ...newReport["o-fill-failed"],
+    ...newReport["self-intersecting"],
+    ...newReport["non-manifold"],
+    ...newReport.sheet
+  ];
+
+  return objectsWithCategoryData;
+}
+
+function localizeObject(obj) {
+  const verts = obj.scaledVertices ?? obj.vertices;
+  // if (!obj.vertexIndices) return obj; // already local
+
+  const indexMap = new Map(); // global → local
+  for (let local = 0; local < verts.length; local++) {
+    const global = obj.vertexIndices[local];
+    indexMap.set(global, local + 1); // 1-based local
+  }
+
+  // Remap faces
+  const faces = obj.faces.map(face => face.map(g => indexMap.get(g)));
+
+  return {
+    ...obj,
+    // vertices: verts,
+    localFaces: faces,
+    faces,
+    // vertexIndices: undefined,
+    // scaledVertices: undefined
+  };
 }
 
 function fixAndSave() {
@@ -239,6 +346,7 @@ function fixAndSaveModel(scale, objects) {
   const flipNormals = document.getElementById("cb_flip_normals").checked;
   const splitByLooseParts = document.getElementById('cb_split_loose').checked;
   const resizeModel = document.getElementById('cb_resize').checked;
+  const fillHoles = document.getElementById('cb_fill_holes').checked;
   const approxHeight = parseFloat(document.getElementById("i_size").value);
 
   let [sx, sy, sz] = scale;
@@ -270,13 +378,125 @@ function fixAndSaveModel(scale, objects) {
     objects = normalizeObjectsGlobal(objects.map(x => ({...x, vertices: x.scaledVertices ?? x.vertices})), approxHeight)
   }
 
+  if (fillHoles) {
+    console.info('[fix&save] filling holes in meshes ...');
+
+    const localObjects = objects.map(x => localizeObject(x));
+    const report = groupFixedMeshes_safe(localObjects);
+    // report.unchanged, report.filledAll, report.fillFailed, report.selfIntersecting, report.nonManifold
+    console.log(report);
+    objectsWithCategoryData = assignMeshCategories(report);
+    console.log('objects with categories:', objectsWithCategoryData);
+    objects = objectsWithCategoryData;
+  }
+
+  // THis converts our objects back into obj file contents.
+  // DONT DO ANY MESH FIXES AFTER THIS LINE
   console.info('[fix&save] compiling final object ...');
-  const txt = compileObj_global(objects, {removeLandmarks, groupObjects: splitByLooseParts});
+  const txt = compileObj_global2(objects, {removeLandmarks, groupObjects: splitByLooseParts});
 
   console.info('[fix&save] saving file ...');
   saveObj(txt);
 }
 
+
+function compileObj_global2(objects, options) {
+  options = {
+    output: options?.output ?? 'txt',
+    groupObjects: options?.groupObjects ?? false,
+    removeLandmarks: options?.removeLandmarks ?? false,
+  };
+
+  console.info('compileObj: received', objects.length, 'objects to process ...');
+
+  const lines = [];
+  const verticesOut = [];
+  const facesOut = [];
+
+  // Map local vertex index -> output (1-based) vertex index in final file
+  const localToOutIndex = new Map();
+  let outVertexCounter = 0;
+
+  let processedObjects = 0;
+  let processedNonLandmarks = 0;
+
+  // ------- PASS 1: emit all vertices and build mapping -------
+  for (const obj of objects) {
+    processedObjects++;
+
+    if (obj.isLandmark && options.removeLandmarks) continue;
+    processedNonLandmarks++;
+
+    const verts = obj.vertices; // use vertices directly (local indexing)
+
+    if (!Array.isArray(verts)) {
+      console.warn('Object has no vertices:', obj);
+      continue;
+    }
+
+    // Map local indices (1-based) → global output index
+    const objLocalToOut = new Map();
+
+    for (let i = 0; i < verts.length; i++) {
+      const v = verts[i];
+      outVertexCounter++;
+
+      if (options.output === 'txt') {
+        lines.push(`v ${v[0]} ${v[1]} ${v[2]}`);
+      } else {
+        verticesOut.push(v);
+      }
+
+      objLocalToOut.set(i + 1, outVertexCounter);
+    }
+
+    // Store per-object mapping for pass 2
+    localToOutIndex.set(obj, objLocalToOut);
+  }
+
+  console.info('compileObj, pass 1: emitted', outVertexCounter, 'vertices across', processedNonLandmarks, 'objects');
+
+  // ------- PASS 2: emit faces -------
+  processedObjects = 0;
+  processedNonLandmarks = 0;
+
+  for (const obj of objects) {
+    processedObjects++;
+    if (obj.isLandmark && options.removeLandmarks) continue;
+    processedNonLandmarks++;
+
+    if (options.groupObjects && options.output === 'txt') {
+      lines.push(`o ${obj.name ?? `object_${processedNonLandmarks}`}`);
+    }
+
+    const objMap = localToOutIndex.get(obj);
+
+    for (const face of obj.faces) {
+      // Remap face indices using local → global mapping
+      const remapped = face.map(idx => objMap.get(idx));
+      if (remapped.some(x => x === undefined)) continue;
+
+      if (options.output === 'txt') {
+        lines.push(`f ${remapped.join(' ')}`);
+      } else {
+        facesOut.push(remapped);
+      }
+    }
+  }
+
+  console.info('compileObj, pass 2: processed', processedNonLandmarks, 'objects');
+
+  if (options.output === 'txt') {
+    return lines.join('\n');
+  } else {
+    const vertexIndices = Array.from({ length: verticesOut.length }, (_, i) => i + 1);
+    return {
+      vertices: verticesOut,
+      faces: facesOut,
+      vertexIndices
+    };
+  }
+}
 
 /**
  * Converts our object data into .obj string.
@@ -364,7 +584,7 @@ function compileObj_global(objects, options) {
 
     // Optional object header
     if (options?.output === 'txt' && options.groupObjects) {
-      lines.push(`o object_${processedNonLandmarks}`);
+      lines.push(obj.name ?? `o object_${processedNonLandmarks}`);
     }
 
     for (const face of obj.faces) {
