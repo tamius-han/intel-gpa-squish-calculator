@@ -228,7 +228,7 @@ function getObjects(string) {
   return objects;
 }
 
-function assignMeshCategories(report, thinThreshold = 0.0125) {
+function assignMeshCategories(report, thinThreshold = 0.0125, showIntersections = false) {
   console.info('[assignMeshCategories] categorizing meshes from report:', report);
 
   const newReport = {
@@ -239,13 +239,47 @@ function assignMeshCategories(report, thinThreshold = 0.0125) {
     "o-fill-failed": [],
     "self-intersecting": [],
     "non-manifold": [],
-    sheet: []
+    sheet: [],
+    intersections: [] // new category for intersecting triangles
   };
 
   // Helper: check if object has at least one unfilled edge loop
   const hasUnfilledLoops = (obj) => {
     const loops = detectEdgeLoops(obj);
     return loops.length > 0;
+  };
+
+  // Collect intersecting triangles as a separate object
+  const collectIntersectionObject = (obj) => {
+    const intersectTris = collectIntersectingTriangles(obj.vertices, obj.localFaces ?? obj.faces);
+    if (intersectTris.length === 0) return null;
+
+    const vertices = [];
+    const faces = [];
+    const vertexMap = new Map();
+    let counter = 1;
+
+    for (const { tri } of intersectTris) {
+      const faceIndices = [];
+      for (const v of tri) {
+        const key = v.join(',');
+        if (!vertexMap.has(key)) {
+          vertexMap.set(key, counter);
+          vertices.push(v);
+          faceIndices.push(counter);
+          counter++;
+        } else {
+          faceIndices.push(vertexMap.get(key));
+        }
+      }
+      faces.push(faceIndices);
+    }
+
+    return {
+      name: `${obj.name}_intersection`,
+      vertices,
+      faces
+    };
   };
 
   const categorizeObject = (obj, isFilled) => {
@@ -256,10 +290,7 @@ function assignMeshCategories(report, thinThreshold = 0.0125) {
     if (thinAndUnfilled) {
       obj.name = `sheet_${newReport.sheet.length + 1}`;
       newReport.sheet.push(obj);
-      return;
-    }
-
-    if (!isFilled) {
+    } else if (!isFilled) {
       if (!manifold) {
         obj.name = `non-manifold_${newReport["non-manifold"].length + 1}`;
         newReport["non-manifold"].push(obj);
@@ -285,6 +316,14 @@ function assignMeshCategories(report, thinThreshold = 0.0125) {
         newReport["o-filled"].push(obj);
       }
     }
+
+    // Only collect intersections if flag is true
+    if (showIntersections) {
+      const intersectionObj = collectIntersectionObject(obj);
+      if (intersectionObj) {
+        newReport.intersections.push(intersectionObj);
+      }
+    }
   };
 
   // Process all objects from the report
@@ -304,7 +343,8 @@ function assignMeshCategories(report, thinThreshold = 0.0125) {
     ...newReport["o-fill-failed"],
     ...newReport["self-intersecting"],
     ...newReport["non-manifold"],
-    ...newReport.sheet
+    ...newReport.sheet,
+    ...newReport.intersections // intersections appear last
   ];
 
   return objectsWithCategoryData;

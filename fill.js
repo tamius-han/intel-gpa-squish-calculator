@@ -11,77 +11,180 @@ function isManifold(faces) {
   return true;
 }
 
-// Very lightweight bounding-box triangle intersection test
-function trianglesIntersect(A, B, EPS=1e-9) {
+function trianglesIntersect_w(tri1, tri2) {
+  const t1 = new Triangle(
+    new Vector3(...tri1[0]),
+    new Vector3(...tri1[1]),
+    new Vector3(...tri1[2])
+  );
+  const t2 = new Triangle(
+    new Vector3(...tri2[0]),
+    new Vector3(...tri2[1]),
+    new Vector3(...tri2[2])
+  );
 
-  // Vector arithmetic
-  const sub = (a,b)=>[a[0]-b[0], a[1]-b[1], a[2]-b[2]];
-  const cross = (a,b)=>[
-    a[1]*b[2]-a[2]*b[1],
-    a[2]*b[0]-a[0]*b[2],
-    a[0]*b[1]-a[1]*b[0]
-  ];
-  const dot = (a,b)=>a[0]*b[0]+a[1]*b[1]+a[2]*b[2];
-
-  // Unpack vertices
-  const [A0,A1,A2] = A;
-  const [B0,B1,B2] = B;
-
-  // Plane normal of A
-  const N1 = cross(sub(A1,A0), sub(A2,A0));
-
-  // Signed distances of B’s vertices to A’s plane
-  const dB0 = dot(N1, sub(B0,A0));
-  const dB1 = dot(N1, sub(B1,A0));
-  const dB2 = dot(N1, sub(B2,A0));
-
-  // If all distances have same sign → B is entirely on one side of A
-  if ((dB0>EPS && dB1>EPS && dB2>EPS) || (dB0<-EPS && dB1<-EPS && dB2<-EPS))
-    return false;
-
-  // Plane normal of B
-  const N2 = cross(sub(B1,B0), sub(B2,B0));
-
-  // Signed distances of A’s vertices to B’s plane
-  const dA0 = dot(N2, sub(A0,B0));
-  const dA1 = dot(N2, sub(A1,B0));
-  const dA2 = dot(N2, sub(A2,B0));
-
-  if ((dA0>EPS && dA1>EPS && dA2>EPS) || (dA0<-EPS && dA1<-EPS && dA2<-EPS))
-    return false;
-
-  // Compute intersection line direction
-  const D = cross(N1, N2);
-  const axis =
-    Math.abs(D[0]) > Math.abs(D[1]) && Math.abs(D[0]) > Math.abs(D[2]) ? 0 :
-    Math.abs(D[1]) > Math.abs(D[2]) ? 1 : 2;
-
-  // Project triangles onto the dominant axis
-  const proj = (p)=>p[axis];
-
-  function interval(p0,p1,p2, normal, ref) {
-    const v0 = proj(p0), v1 = proj(p1), v2 = proj(p2);
-    const min = Math.min(v0,v1,v2);
-    const max = Math.max(v0,v1,v2);
-    return [min,max];
-  }
-
-  const [aMin,aMax] = interval(A0,A1,A2, N1, A0);
-  const [bMin,bMax] = interval(B0,B1,B2, N2, B0);
-
-  return !(aMax < bMin || bMax < aMin);
+  return trianglesIntersect(t1, t2);
 }
 
-// function hasSelfIntersections(vertices, faces) {
-//   const tris = faces.map(f=>f.map(i=>vertices[i-1]));
 
-//   for (let i=0;i<tris.length;i++){
-//     for (let j=i+1;j<tris.length;j++){
-//       if (trianglesIntersect(tris[i],tris[j])) return true;
-//     }
-//   }
-//   return false;
-// }
+// Triangle-triangle intersection test
+function trianglesIntersect_old(tri1, tri2) {
+  // Vector math helpers
+  const sub = (a,b)=>[a[0]-b[0], a[1]-b[1], a[2]-b[2]];
+  const cross = (a,b)=>[a[1]*b[2]-a[2]*b[1], a[2]*b[0]-a[0]*b[2], a[0]*b[1]-a[1]*b[0]];
+  const dot = (a,b)=>a[0]*b[0]+a[1]*b[1]+a[2]*b[2];
+
+  // Compute plane of tri1
+  const u = sub(tri1[1], tri1[0]);
+  const v = sub(tri1[2], tri1[0]);
+  const n1 = cross(u,v);
+  const d1 = -dot(n1, tri1[0]);
+
+  // Compute plane of tri2
+  const u2 = sub(tri2[1], tri2[0]);
+  const v2 = sub(tri2[2], tri2[0]);
+  const n2 = cross(u2,v2);
+  const d2 = -dot(n2, tri2[0]);
+
+  const EPSILON = 1e-8;
+
+  // Signed distances of tri2 vertices to plane of tri1
+  let du = tri2.map(p => dot(n1,p)+d1);
+  du = du.map(d => Math.abs(d)<EPSILON ? 0 : d);
+  if (du[0]*du[1]>0 && du[0]*du[2]>0) return false; // all same side → no intersection
+
+  // Signed distances of tri1 vertices to plane of tri2
+  let dv = tri1.map(p => dot(n2,p)+d2);
+  dv = dv.map(d => Math.abs(d)<EPSILON ? 0 : d);
+  if (dv[0]*dv[1]>0 && dv[0]*dv[2]>0) return false; // all same side → no intersection
+
+  // Check for coplanar triangles
+  const n1n2 = cross(n1,n2);
+  if (Math.abs(n1n2[0])+Math.abs(n1n2[1])+Math.abs(n1n2[2]) < EPSILON) {
+    // Triangles are coplanar: project onto largest plane and check 2D intersection
+    const absN = n1.map(Math.abs);
+    let i0,i1;
+    if (absN[0] > absN[1] && absN[0] > absN[2]) i0=1,i1=2; // project to YZ
+    else if (absN[1] > absN[2]) i0=0,i1=2; // project to XZ
+    else i0=0,i1=1; // project to XY
+
+    const tri1_2d = tri1.map(p=>[p[i0],p[i1]]);
+    const tri2_2d = tri2.map(p=>[p[i0],p[i1]]);
+
+    return tri2dIntersect(tri1_2d, tri2_2d);
+  }
+
+  // Otherwise, triangles intersect in 3D
+  // Approximation: bounding box overlap (fast, conservative)
+  const bb = (t)=>[
+    [Math.min(t[0][0],t[1][0],t[2][0]), Math.min(t[0][1],t[1][1],t[2][1]), Math.min(t[0][2],t[1][2],t[2][2])],
+    [Math.max(t[0][0],t[1][0],t[2][0]), Math.max(t[0][1],t[1][1],t[2][1]), Math.max(t[0][2],t[1][2],t[2][2])]
+  ];
+  const b1 = bb(tri1), b2 = bb(tri2);
+  for (let i=0;i<3;i++){
+    if (b1[1][i]<b2[0][i] || b1[0][i]>b2[1][i]) return false;
+  }
+
+  return true;
+}
+
+/**
+ * Check intersection of two 2D triangles (coplanar case)
+ * @param {number[][]} t1 3x2
+ * @param {number[][]} t2 3x2
+ * @returns {boolean}
+ */
+function tri2dIntersect(t1,t2){
+  // Using Separating Axis Theorem in 2D
+  const axes = [
+    sub2D(t1[1],t1[0]), sub2D(t1[2],t1[1]), sub2D(t1[0],t1[2]),
+    sub2D(t2[1],t2[0]), sub2D(t2[2],t2[1]), sub2D(t2[0],t2[2])
+  ];
+
+  for (const axis of axes){
+    let [minA,maxA] = projectTri2D(t1, axis);
+    let [minB,maxB] = projectTri2D(t2, axis);
+    if (maxA<minB || maxB<minA) return false; // separating axis found
+  }
+  return true;
+}
+function sub2D(a,b){return [a[0]-b[0], a[1]-b[1]];}
+function dot2D(a,b){return a[0]*b[0]+a[1]*b[1];}
+function projectTri2D(tri, axis){
+  const dots = tri.map(p=>dot2D(p,axis));
+  return [Math.min(...dots), Math.max(...dots)];
+}
+
+function collectIntersectingTriangles(vertices, faces) {
+  const tris = faces.map(f => [
+    vertices[f[0]-1],
+    vertices[f[1]-1],
+    vertices[f[2]-1]
+  ]);
+
+  const intersectingTris = [];
+
+  for (let i = 0; i < tris.length; i++) {
+    const fi = faces[i];
+
+    for (let j = i+1; j < tris.length; j++) {
+      const fj = faces[j];
+
+      // skip triangles sharing any vertex
+      if (fi.some(v => fj.includes(v))) continue;
+
+      if (trianglesIntersect_w(tris[i], tris[j])) {
+        intersectingTris.push({ tri: tris[i], faceIndex: i });
+        intersectingTris.push({ tri: tris[j], faceIndex: j });
+
+        return intersectingTris;
+      }
+    }
+  }
+
+  return intersectingTris;
+}
+
+function buildIntersectionObject(intersectTris) {
+  const vertices = [];
+  const faces = [];
+
+  const vertexMap = new Map();
+  let counter = 1;
+
+  for (const { tri } of intersectTris) {
+    const faceIndices = [];
+
+    for (const v of tri) {
+      const key = v.join(',');
+      if (!vertexMap.has(key)) {
+        vertexMap.set(key, counter);
+        vertices.push(v);
+        faceIndices.push(counter);
+        counter++;
+      } else {
+        faceIndices.push(vertexMap.get(key));
+      }
+    }
+
+    faces.push(faceIndices);
+  }
+
+  return {
+    name: `intersections_${intersectTris.length}`,
+    vertices,
+    faces
+  };
+}
+
+function sharesEdgeOrVertex(f1, f2) {
+  let shared = 0;
+  if (f1[0] === f2[0] || f1[0] === f2[1] || f1[0] === f2[2]) shared++;
+  if (f1[1] === f2[0] || f1[1] === f2[1] || f1[1] === f2[2]) shared++;
+  if (f1[2] === f2[0] || f1[2] === f2[1] || f1[2] === f2[2]) shared++;
+  return shared >= 1; // use >=2 if you only want to skip shared-edge but test shared-vertex
+}
+
 function hasSelfIntersections(vertices, faces) {
   // Convert faces to triangles in vertex coordinates
   const tris = faces.map(f => {
@@ -117,21 +220,21 @@ function hasSelfIntersections(vertices, faces) {
       if (!bboxOverlap(bA, bB)) continue;
 
       // Only test true disjoint triangles
-      if (trianglesIntersect(tris[i], tris[j])) {
+      if (trianglesIntersect_w(tris[i], tris[j])) {
 
         // Check coplanarity — if coplanar, ignore
         const t1 = tris[i], t2 = tris[j];
-        if (!areCoplanar(t1[0],t1[1],t1[2], t2[0],t2[1],t2[2])) {
-          console.warn("INTERSECTION DETECTED - triangles are coplanar", {
-            faceA: faces[i],
-            faceB: faces[j],
-            triA: tris[i],
-            triB: tris[j]
-          });
-          return true; // real self-intersection
-        } else {
-          console.warn("ignored coplanar intersection ...");
-        }
+        // if (!areCoplanar(t1[0],t1[1],t1[2], t2[0],t2[1],t2[2])) {
+        console.warn("INTERSECTION DETECTED - triangles are coplanar", {
+          faceA: faces[i],
+          faceB: faces[j],
+          triA: JSON.stringify(tris[i]),
+          triB: JSON.stringify(tris[j])
+        });
+        return true; // real self-intersection
+        // } else {
+        //   console.warn("ignored coplanar intersection ...");
+        // }
 
 
         // return true;
@@ -390,24 +493,6 @@ function findNeighborFace(obj, v0, v1) {
   return null;
 }
 
-function areCoplanar(a, b, c, d, e, f, eps = 1e-6) {
-  // Compute triangle normals
-  const n1 = cross(sub(b,a), sub(c,a));
-  const n2 = cross(sub(e,d), sub(f,d));
-
-  // If normals are parallel → coplanar or mirrored
-  const crossN = cross(n1, n2);
-  if (length(crossN) > eps) return false; // not parallel → not coplanar
-
-  // Check if one vertex lies in the plane of the other triangle
-  const dist = dot(n1, sub(d,a));
-  return Math.abs(dist) < eps;
-}
-
-function sub(a,b){return [a[0]-b[0],a[1]-b[1],a[2]-b[2]];}
-function cross(a,b){return [a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]];}
-function dot(a,b){return a[0]*b[0]+a[1]*b[1]+a[2]*b[2];}
-function length(v){return Math.sqrt(dot(v,v));}
 
 function bboxOverlap(a, b) {
   for (let axis = 0; axis < 3; axis++) {
