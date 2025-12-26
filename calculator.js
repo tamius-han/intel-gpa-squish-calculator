@@ -26,10 +26,15 @@ const COMMON_ASPECT_RATIOS = [
 ];
 
 function resetCalculationWarnings() {
-  document.getElementById('error_objects_not_matching')?.classList.add('hidden');
+  document.getElementById('error_no_valid_landmark_geometry')?.classList.add('hidden');
   document.getElementById('error_too_many_source_objects')?.classList.add('hidden');
+  document.getElementById('error_landmark_not_in_output').classList.add('hidden');
   document.getElementById('warning_multiple_objects')?.classList.add('hidden');
   document.getElementById('warning_ar_not_matching')?.classList.add('hidden');
+  document.getElementById('warning_multiple_landmark_detections')?.classList.add('hidden');
+
+
+  document.getElementById('b_calculate').classList.remove('disabled');
 }
 
 let calculatedScale;
@@ -40,14 +45,32 @@ function calculate() {
   const resultsDiv = document.getElementById('results-ready');
   resultsDiv.classList.add('hidden');
 
-  const landmark = window.landmark;
+  const landmarkInputMeshes = window.landmark;
   const output = window.output;
 
-  console.log('Landmark:', landmark, 'out:', output);
+  console.log('Landmarks from file:', landmarkInputMeshes, 'out:', output);
 
-  if (landmark.length > 1) {
-    document.getElementById('etmso_count').textContent = landmark.length;
+  let landmark;
+
+  if (!landmarkInputMeshes || landmarkInputMeshes.length < 1) {
+    document.getElementById('error_no_valid_landmark_geometry').classList.remove('hidden');
+    document.getElementById('b_calculate').classList.add('disabled');
     return;
+  } else if (landmarkInputMeshes.length > 1) {
+    document.getElementById('error_too_many_source_objects').classList.remove('hidden');
+    document.getElementById('etmso_count').textContent = landmarkInputMeshes.length;
+
+    // Pick the mesh with most vertices and edges as our landmark as a fallback
+    let maxFeatures = 0;
+    for (const l of landmarkInputMeshes) {
+      const features = l.faces.length + l.vertices.length;
+      if (features > maxFeatures) {
+        landmark = l;
+        maxFeatures = features;
+      }
+    }
+  } else {
+    landmark = landmarkInputMeshes[0];
   }
 
   let finalResult;
@@ -55,23 +78,28 @@ function calculate() {
   let hasLandmark = false;
   let hasNonLandmark = false;
 
+  let landmarkDetections = 0;
 
+  // In this loop, we iterate through meshes in the output geometry and try
+  // to match them with our landmark.
   for (const outObj of output) {
-    if (landmark[0].vertices.length !== outObj.vertices.length || landmark[0].faces.length !== outObj.faces.length) {
-      // document.getElementById('error_objects_not_matching').classList.remove('hidden');
+    if (landmark.vertices.length !== outObj.vertices.length || landmark.faces.length !== outObj.faces.length) {
       hasNonLandmark = true;
       continue;
-    } else {
-      outObj.isLandmark = true;
     }
-    hasLandmark = true;
-      hasNonLandmark = true;
 
-    const result = analyzeTransform(landmark[0], outObj);
+    const result = analyzeTransform(landmark, outObj);
     normalizeResults(result);
     const testResult = verifyResults(result);
 
     if (!testResult.matches) {
+      if (hasLandmark) {
+        // silently ignore non-matching things if landmark was already detected
+        // we need to have this because we don't exit this loop on first landmark
+        // match. Instead, we continue going through all output objects in order
+        // to count how many times landmark appears in the output.
+        continue;
+      }
       if (!testResult.altMatch && !finalResultConcerns?.altMatch) {
         const concerns = {
           ...testResult,
@@ -90,10 +118,31 @@ function calculate() {
         finalResult = result.scale;
       }
     } else {
+      outObj.isLandmark = true;
+
+      landmarkDetections++;
+      hasLandmark = true;
+
       finalResultConcerns = undefined;
       finalResult = result.scale;
-      break;
+
+      // we do not break, because we want to count how many times the landmark appears
+      // in the output geometry. If it appears more than once, this may indicate an
+      // issue.
     }
+  }
+
+  console.info('did we detect landmark in output?', hasLandmark);
+  if (!hasLandmark) {
+    console.error('Landmark was not detected in the output!');
+    document.getElementById('error_landmark_not_in_output').classList.remove('hidden');
+    document.getElementById('b_calculate').classList.add('disabled');
+    return;
+  }
+
+  if (landmarkDetections > 1) {
+    document.getElementById('wmld_count').textContent = landmarkDetections;
+    document.getElementById('warning_multiple_landmark_detections').classList.remove('hidden');
   }
 
   console.info('found our match:', finalResult, ' — procesing warnings ...');
@@ -109,9 +158,9 @@ function calculate() {
     saveForm.classList.add('hidden');
   }
 
-  if (landmark.length > 1) {
+  if (landmarkInputMeshes.length > 1) {
     document.getElementById('error_too_many_source_objects').classList.remove('hidden');
-    document.getElementById('wmo_object_count').textContent = landmark.length;
+    document.getElementById('wmo_object_count').textContent = landmarkInputMeshes.length;
   }
 
   if (finalResultConcerns) {

@@ -179,6 +179,11 @@
           background-color: var(--primary-dark);
           border-color: var(--primary-color);
         }
+
+        &.disabled {
+          opacity: 50%;
+          pointer-events: none;
+        }
       }
 
       .warning, .error {
@@ -519,6 +524,7 @@
             <li>Is NOT animated in any way (physics objects are fine)</li>
             <li>Was not stretched by level designers when they placed it into a level</li>
             <li>Needs to be one contiguous object</li>
+            <li>SHOULD BE THREE-DIMENSIONAL (completely flat panels are not okay)</li>
           </ul>
           <p>
             "Perfect cube" boxes are good candidates for a landmark. So are various decorative objects.
@@ -637,7 +643,7 @@
       </div>
 
       <div class="buttons-center">
-        <button onclick="calculate()">CALCULATE</button>
+        <button id="b_calculate" onclick="calculate()">CALCULATE</button>
         <button onclick="reset()">RESET</button>
       </div>
 
@@ -652,17 +658,46 @@
       </div>
 
       <section id="warnings_container" class="warnings">
-        <div id="error_objects_not_matching" class="error hidden">
-          <h1>Input and output objects have different number of vertices</h1>
-          <p>Source geometry and output geometry must contain the same object.</p>
-        </div>
-
-        <div id="error_too_many_source_objects" class="error hidden">
+        <div id="error_no_valid_landmark_geometry" class="error hidden">
           <div class="warn-field row">
             <div class="icon">[!]</div>
             <div class="col">
-              <b>Too many objects in source geometry.</b>
-              <p>There should be exactly one contiguous objects in landmark source geometry, but <span id="etmso_count"></span> were detected.</p>
+              <b>No valid landmark geometry</b>
+              <p>Landmark file contains no valid meshes. Please pick a different landmark object.</p>
+            </div>
+          </div>
+        </div>
+
+        <div id="error_landmark_not_in_output" class="error hidden">
+          <div class="warn-field row">
+            <div class="icon">[!]</div>
+            <div class="col">
+              <b>Landmark object was not detected in the output</b>
+              <p>Landmark object must be present in the output geometry file in order for calculations to happen. Please re-export output geometry with landmark added to the export selection.</p>
+              <p>
+                If you're 140% sure that landmark is included in your output geometry file, try picking a different object as your landmark because you're probably running into a technical limitation
+                that's caused by the way Intel GPA suite exports .obj files, combined with mathematical limitations of distance-based vertex deduplication.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div id="error_too_many_source_objects" class="warning hidden">
+          <div class="warn-field row">
+            <div class="icon">[!]</div>
+            <div class="col">
+              <b>More than one object in source geometry detected.</b>
+              <p><span id="etmso_count"></span> were detected in the landmark file. This may sometimes be fine, but it often indicates a problem, so please check your files.</p>
+            </div>
+          </div>
+        </div>
+
+        <div id="warning_multiple_landmark_detections" class="warning hidden">
+          <div class="warn-field row">
+            <div class="icon">[!]</div>
+            <div class="col">
+              <b>Multiple landmark detections</b>
+              <p>Landmark was detected <span id="wmld_count"></span> times in the output geometry. This may affect the accuracy of the calculation. Try to ensure your landmark appears only once in your output geometry.</p>
             </div>
           </div>
         </div>
@@ -752,7 +787,7 @@
               <label for="cb_split_loose" class="checkbox-label">
                 <div class="checkbox-row">
                   <input type="checkbox" id="cb_split_loose" />
-                  <span>Fill holes</span>
+                  <span>Split by loose parts</span>
                 </div>
                 <span class="hint">This saves you 2 clicks in Blender when you start fixing your meshes.</span>
               </label>
@@ -761,9 +796,9 @@
               <label for="cb_fill_holes" class="checkbox-label">
                 <div class="checkbox-row">
                   <input type="checkbox" id="cb_fill_holes" />
-                  <span>Split by loose parts</span>
+                  <span>Fill holes</span>
                 </div>
-                <span class="hint">(The correct jargon term is "edge loops" i think)</span>
+                <span class="hint">This saves you few hours in Blender when you start fixing your meshes. (The correct jargon term is "edge loops" btw, i think)</span>
               </label>
 
               <!-- Resize / move feet -->
@@ -774,9 +809,15 @@
                 </div>
                 <span class="hint">Also moves feet to origin.</span>
               </label>
-              <label class="inline-field">
+              <label class="checkbox-label">
+                <div class="inline-field">
                 <span>Approximate height of model (units/mm):</span>
                 <input type="number" id="i_size" min="0" step="0.1" placeholder="optional" />
+                </div>
+                <span class="hint">
+                  Height is calculated in the simplest, most naive way: by looking at the difference by the highest and the lowest vertex in the scene.
+                  Landmark is NOT included in the calculation.
+                </span>
               </label>
 
               <div class="buttons-center">
