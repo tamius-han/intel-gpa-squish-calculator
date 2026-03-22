@@ -29,6 +29,7 @@ function resetCalculationWarnings() {
   document.getElementById('error_no_valid_landmark_geometry')?.classList.add('hidden');
   document.getElementById('error_too_many_source_objects')?.classList.add('hidden');
   document.getElementById('error_landmark_not_in_output').classList.add('hidden');
+  document.getElementById('error_landmark_sus').classList.add('hidden');
   document.getElementById('warning_multiple_objects')?.classList.add('hidden');
   document.getElementById('warning_ar_not_matching')?.classList.add('hidden');
   document.getElementById('warning_multiple_landmark_detections')?.classList.add('hidden');
@@ -77,6 +78,7 @@ function calculate() {
   let finalResultConcerns;
   let hasLandmark = false;
   let hasNonLandmark = false;
+  let hasSusLandmark = false;
 
   let landmarkDetections = 0;
 
@@ -92,6 +94,8 @@ function calculate() {
     normalizeResults(result);
     const testResult = verifyResults(result);
 
+    console.info('———— is current object landmark?', testResult, 'did we have landmark before?', hasLandmark);
+
     if (!testResult.matches) {
       if (hasLandmark) {
         // silently ignore non-matching things if landmark was already detected
@@ -99,6 +103,9 @@ function calculate() {
         // match. Instead, we continue going through all output objects in order
         // to count how many times landmark appears in the output.
         continue;
+      }
+      if (testResult.isSusAR1) {
+        hasSusLandmark = true;
       }
       if (!testResult.altMatch && !finalResultConcerns?.altMatch) {
         const concerns = {
@@ -122,6 +129,7 @@ function calculate() {
 
       landmarkDetections++;
       hasLandmark = true;
+      hasSusLandmark = false;
 
       finalResultConcerns = undefined;
       finalResult = result.scale;
@@ -137,6 +145,10 @@ function calculate() {
     console.error('Landmark was not detected in the output!');
     document.getElementById('error_landmark_not_in_output').classList.remove('hidden');
     document.getElementById('b_calculate').classList.add('disabled');
+
+    if (hasSusLandmark) {
+      document.getElementById('error_landmark_sus').classList.remove('hidden');
+    }
     return;
   }
 
@@ -238,19 +250,25 @@ function verifyResults(result) {
   if (Math.abs(Math.abs(aspectRatio) - Math.abs(sx)) > 0.05) {
     console.warn('Results are sus — we expect X scale to match our aspect ratio, but it doesn\'t.', 'ar:', aspectRatio, 'detected sx:', sx);
 
+    let susAR1 = false; // 'true' if aspect ratio is close to 1
+    if (Math.abs(Math.abs(sx) - 1) < 0.05){
+      susAR1 = true;
+    }
     const matchingRatio = scanCommonAR(sx);
     if (matchingRatio) {
       return {
         matches: false,
         altMatch: true,
         detectedRatio: sx,
-        matchedRatio: matchingRatio
+        matchedRatio: matchingRatio,
+        isSusAR1: susAR1
       }
     } else {
       return {
         matches: false,
         detectedRatio: sx,
-        screenRatio: aspectRatio
+        screenRatio: aspectRatio,
+        isSusAR1: susAR1
       }
     }
   }
