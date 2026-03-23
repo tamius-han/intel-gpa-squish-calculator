@@ -47,9 +47,9 @@ function calculate() {
   resultsDiv.classList.add('hidden');
 
   const landmarkInputMeshes = window.landmark;
-  const output = window.output;
+  const outputMeshes = window.output;
 
-  console.log('Landmarks from file:', landmarkInputMeshes, 'out:', output);
+  console.log('Landmarks from file:', landmarkInputMeshes, 'out:', outputMeshes);
 
   let landmark;
 
@@ -79,12 +79,13 @@ function calculate() {
   let hasLandmark = false;
   let hasNonLandmark = false;
   let hasSusLandmark = false;
+  let hasSusDeformedLandmark = false;
 
   let landmarkDetections = 0;
 
   // In this loop, we iterate through meshes in the output geometry and try
   // to match them with our landmark.
-  for (const outObj of output) {
+  for (const outObj of outputMeshes) {
     if (landmark.vertices.length !== outObj.vertices.length || landmark.faces.length !== outObj.faces.length) {
       hasNonLandmark = true;
       continue;
@@ -96,7 +97,7 @@ function calculate() {
 
     console.info('———— is current object landmark?', testResult, 'did we have landmark before?', hasLandmark);
 
-    if (!testResult.matches) {
+    if (!testResult.arMatches) {
       if (hasLandmark) {
         // silently ignore non-matching things if landmark was already detected
         // we need to have this because we don't exit this loop on first landmark
@@ -105,31 +106,41 @@ function calculate() {
         continue;
       }
       if (testResult.isSusAR1) {
+        console.warn('detected sus landmark.');
         hasSusLandmark = true;
       }
       if (!testResult.altMatch && !finalResultConcerns?.altMatch) {
+        console.warn('We detected landmark, but landmark AR matches neither screen AR, nor any other common ratios.');
         const concerns = {
           ...testResult,
           notMatching: true,
           arDiff: Math.abs(testResult.detectedRatio - testResult.screenRatio)
         }
-        if (finalResultConcerns && finalResultConcerns.arDiff > concerns.arDiff ) {
+        // if (finalResultConcerns && finalResultConcerns.arDiff > concerns.arDiff ) {
           finalResultConcerns = concerns;
           finalResult = result.scale;
-        }
+        // }
       } else if (testResult.altMatch && !finalResultConcerns?.altMatch) {
         finalResultConcerns = {
           notMatching: true,
           ...testResult
         };
         finalResult = result.scale;
+      } else if (!testResult.isSusAR1 && !finalResultConcerns.altMatch && !finalResultConcerns.deformedAr) {
+        finalResultConcerns = {
+          notMatching: true,
+          arDiff: Math.abs(testResult.detectedRatio - testResult.screenRatio),
+        }
       }
+
     } else {
+      console.log('found non-sus landmark!');
       outObj.isLandmark = true;
 
       landmarkDetections++;
       hasLandmark = true;
       hasSusLandmark = false;
+      hasSusDeformedLandmark = false;
 
       finalResultConcerns = undefined;
       finalResult = result.scale;
@@ -140,15 +151,24 @@ function calculate() {
     }
   }
 
-  console.info('did we detect landmark in output?', hasLandmark);
-  if (!hasLandmark) {
-    console.error('Landmark was not detected in the output!');
-    document.getElementById('error_landmark_not_in_output').classList.remove('hidden');
-    document.getElementById('b_calculate').classList.add('disabled');
+  console.info('did we detect landmark in output?', hasLandmark, 'is sus landmark?', hasSusLandmark);
 
+  if (!hasLandmark && !finalResultConcerns) {
     if (hasSusLandmark) {
       document.getElementById('error_landmark_sus').classList.remove('hidden');
     }
+
+    if (hasSusDeformedLandmark) {
+
+    } else {
+      console.error('Landmark was not detected in the output!');
+      document.getElementById('error_landmark_not_in_output').classList.remove('hidden');
+      document.getElementById('b_calculate').classList.add('disabled');
+    }
+
+    // render object list for manual selection/override
+    showObjectList(landmarkInputMeshes, 'landmark');
+    showObjectList(outputMeshes, 'output');
     return;
   }
 
@@ -159,7 +179,7 @@ function calculate() {
 
   console.info('found our match:', finalResult, ' — procesing warnings ...');
   console.info('did we detect objects other than landmark?', hasNonLandmark);
-  console.info('objects in output:', output.length);
+  console.info('objects in output:', outputMeshes.length);
 
   const saveForm = document.getElementById('results-fix-and-save');
   if (hasNonLandmark) {
@@ -172,12 +192,13 @@ function calculate() {
 
   if (landmarkInputMeshes.length > 1) {
     document.getElementById('error_too_many_source_objects').classList.remove('hidden');
-    document.getElementById('wmo_object_count').textContent = landmarkInputMeshes.length;
+    document.getElementById('etmso_count').textContent = landmarkInputMeshes.length;
   }
 
   if (finalResultConcerns) {
     document.getElementById('warning_ar_not_matching').classList.remove('hidden');
-    document.getElementById('arnm_result').textContent = `${finalResultConcerns.altMatch ? `${finalResultConcerns.detectedRatio.toFixed(3)} (${finalResultConcerns.matchedRatio?.name})` : finalResultConcerns.detectedRatio}`;
+    document.getElementById('arnm_monitor_ar').innerHTML = `<b>${(window.screen.width / window.screen.height).toFixed(3)}</b>`;
+    document.getElementById('arnm_result').innerHTML = `${finalResultConcerns.altMatch ? `<b>${finalResultConcerns.detectedRatio.toFixed(3)}</b> (${finalResultConcerns.matchedRatio?.name})` : `<b>${finalResultConcerns.detectedRatio.toFixed(3)}</b> (not matching any common aspect ratio)`}`;
   }
 
   calculatedScale = finalResult;
@@ -257,7 +278,7 @@ function verifyResults(result) {
     const matchingRatio = scanCommonAR(sx);
     if (matchingRatio) {
       return {
-        matches: false,
+        arMatches: false,
         altMatch: true,
         detectedRatio: sx,
         matchedRatio: matchingRatio,
@@ -265,7 +286,7 @@ function verifyResults(result) {
       }
     } else {
       return {
-        matches: false,
+        arMatches: false,
         detectedRatio: sx,
         screenRatio: aspectRatio,
         isSusAR1: susAR1
@@ -274,7 +295,7 @@ function verifyResults(result) {
   }
 
   return {
-    matches: true,
+    arMatches: true,
   };
 }
 
@@ -1161,4 +1182,220 @@ function checkNormalOrientation(meshes) {
     avgDot,
     orientation: avgDot > 0 ? 'outward' : 'inward'
   };
+}
+
+
+//#region OBJECT LIST
+/**
+ * Draws list of 3D objects.
+ * @param {*} objects objects to draw. {vertex[], face[]}
+ * @param {*} list 'landmark' | 'output' — which list the objects belong to.
+ */
+function showObjectList(objects, list) {
+  const listEl = document.getElementById(`object-list-${list}`);
+
+  listEl.innerHTML = ''; // clear children real fast
+  for (let i = 0; i < objects.length; i++) {
+    listEl.appendChild(createObjectListItem(`${list}-${i}`, objects[i]));
+  }
+}
+
+function createObjectListItem(objectId, object) {
+  const div = document.createElement('div');
+  div.innerHTML = `
+    <div id="${objectId}" class="object-list-item">
+      <div class="object-info">
+        <div>
+          <b>Object ${objectId}</b>
+        </div>
+        <div>
+          Vertices: <i>${object.vertices.length}</i>, faces: <i>${object.faces.length}</i>
+        </div>
+      </div>
+      <div id="${objectId}-preview" class="object-preview">
+        <canvas id="${objectId}-canvas"></canvas>
+      </div>
+    </div>
+  `;
+
+  // normalize model
+  const objects3 = normalizeObjectsGlobal(
+    compileObj_global(
+      [object],
+      {output: 'object'}
+    )
+  );
+
+  // correct vertex offsets
+  objects3[0].faces = objects3[0].faces.map(([a,b,c]) => [a-1, b-1, c-1]);
+
+
+  /**
+   * When hovering, rotate object automatically
+   * When mouse-dragging, control rotation by dragging
+   * When neither, freeze object rotation
+   */
+  const MOUSE_SENS_X = 0.5;
+  const MOUSE_SENS_Y = 0.5;
+  const ROTATION_SPEED = 100;
+
+  const state = {
+    rotX: 0,
+    rotY: 0,
+    rotZ: 0,
+    isHovering: false,
+    isDragging: false,
+    lastMouseX: 0,
+    lastMouseY: 0,
+    rafId: undefined
+  };
+
+  //#region helper functions
+  function startAnimation() {
+    if (state.rafId !== undefined) {
+      console.log('animation already runnig ...');
+      return; // already running
+    }
+
+    function loop() {
+      // Stop condition
+      if (!state.isHovering && !state.isDragging) {
+        state.rafId = undefined;
+        return;
+      }
+
+      // ——————————————————————————————————————————
+      //                   IN CASE OF
+      //       [ 🔨 ]      RENDERING ISSUES
+      //                   BREAK COMMENT
+      // ——————————————————————————————————————————
+      //
+      // resizeCanvasToDisplaySize(canvas);
+
+      if (state.isHovering && !state.isDragging) {
+        state.rotY += ROTATION_SPEED;
+      }
+
+      renderTwoSidedLit(objects3, canvas, {
+        rotX: state.rotX,
+        rotY: state.rotY,
+        rotZ: state.rotZ
+      });
+
+      state.rafId = requestAnimationFrame(loop);
+    }
+
+    state.rafId = requestAnimationFrame(loop);
+  }
+
+  function stopAnimation() {
+    if (state.rafId !== undefined) {
+      cancelAnimationFrame(state.rafId);
+      state.rafId = undefined;
+    }
+  }
+  //#endregion helper functions
+
+  const canvas = div.querySelector(`#${objectId}-canvas`);
+  const container = div.querySelector(`#${objectId}`);
+
+  container.addEventListener("mouseenter", () => {
+    console.log('starting animation:');
+    console.log('animation obj:', objectId)
+    state.isHovering = true;
+    startAnimation();
+  });
+
+  container.addEventListener("mouseleave", () => {
+    state.isHovering = false;
+
+    if (!state.isDragging) {
+      stopAnimation();
+    }
+  });
+
+  div.addEventListener("mousedown", (e) => {
+    if (e.button !== 0) return;
+
+    state.isDragging = true;
+    state.lastMouseX = e.clientX;
+    state.lastMouseY = e.clientY;
+
+    startAnimation(); // ensure rendering continues
+  });
+
+  div.addEventListener("mouseup", () => {
+    state.isDragging = false;
+
+    if (!state.isHovering) {
+      stopAnimation();
+    }
+  });
+
+  div.addEventListener("mousemove", (e) => {
+    if (!state.isDragging) return;
+
+    const dx = e.clientX - state.lastMouseX;
+    const dy = e.clientY - state.lastMouseY;
+
+    state.lastMouseX = e.clientX;
+    state.lastMouseY = e.clientY;
+
+    // Adjust sensitivity here
+    state.rotY += dx * MOUSE_SENS_Y;
+    state.rotX += dy * MOUSE_SENS_X;
+  });
+
+  // ensure that element gets:
+  // * rendered when it enters viewport
+  // * re-rendered when its size changes
+
+  let hasRenderedOnce = false;
+
+  const io = new IntersectionObserver((entries) => {
+    for (const entry of entries) {
+      if (entry.isIntersecting) {
+        if (!hasRenderedOnce) {
+          renderOnce();
+          hasRenderedOnce = true;
+        }
+      }
+    }
+  }, {
+    root: null,
+    threshold: 0.1
+  });
+
+  io.observe(canvas);
+
+  function renderOnce() {
+    renderTwoSidedLit(objects3, canvas, {
+      rotX: state.rotX,
+      rotY: state.rotY,
+      rotZ: state.rotZ
+    });
+  }
+  const ro = new ResizeObserver(() => {
+    resizeCanvasToDisplaySize(canvas);
+    renderOnce();
+  });
+
+  ro.observe(canvas);
+
+  return div;
+}
+
+function resizeCanvasToDisplaySize(canvas) {
+  const dpr = window.devicePixelRatio || 1;
+  const rect = canvas.getBoundingClientRect();
+
+  const width = Math.round(rect.width * dpr);
+  const height = Math.round(rect.height * dpr);
+
+  if (canvas.width !== width || canvas.height !== height) {
+    canvas.width = width;
+    canvas.height = height;
+    return true;
+  }
+  return false;
 }

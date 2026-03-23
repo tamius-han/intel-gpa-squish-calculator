@@ -1,4 +1,36 @@
+function rotXMat(a = 0){
+  const c = Math.cos(a), s = Math.sin(a);
+  return new Float32Array([
+    1,0,0,0,
+    0,c,s,0,
+    0,-s,c,0,
+    0,0,0,1
+  ]);
+}
+
+function rotYMat(a = 0){
+  const c = Math.cos(a), s = Math.sin(a);
+  return new Float32Array([
+    c,0,-s,0,
+    0,1,0,0,
+    s,0,c,0,
+    0,0,0,1
+  ]);
+}
+
+function rotZMat(a = 0){
+  const c = Math.cos(a), s = Math.sin(a);
+  return new Float32Array([
+    c,s,0,0,
+    -s,c,0,0,
+    0,0,1,0,
+    0,0,0,1
+  ]);
+}
+
 function renderTwoSidedLit(meshes, canvas, options = {}) {
+  options = {rotX: 0, rotY: 0, rotZ: 0, ...options};
+
   const gl = canvas.getContext("webgl2", { alpha: true, depth: true });
   if (!gl) throw new Error("WebGL2 not supported");
 
@@ -86,7 +118,8 @@ function renderTwoSidedLit(meshes, canvas, options = {}) {
   flat out vec3 v_normal;
   void main() {
     gl_Position = u_matrix * vec4(a_position,1.0);
-    v_normal = a_normal;
+    v_normal = mat3(u_matrix) * a_normal;
+    // v_normal = a_normal;
   }`;
 
   const fs=`#version 300 es
@@ -181,7 +214,16 @@ function renderTwoSidedLit(meshes, canvas, options = {}) {
 
   const orthoMat = ortho(-aspectRatio,aspectRatio,-1,1,-10,10);
   const viewMat = lookAt(eye,center,up);
-  const uMat = multiplyMatrices(orthoMat,viewMat);
+
+  // do rotation
+  let modelMat = rotXMat(options.rotX);
+  modelMat = multiplyMatrices(rotYMat(options.rotY), modelMat);
+  modelMat = multiplyMatrices(rotZMat(options.rotZ), modelMat);
+
+  // const uMat = multiplyMatrices(orthoMat,viewMat);
+  const viewModel = multiplyMatrices(viewMat, modelMat);
+  const uMat = multiplyMatrices(orthoMat, viewMat);
+
   gl.uniformMatrix4fv(u_matrix,false,uMat);
 
   // ---- Draw ----

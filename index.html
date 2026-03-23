@@ -247,6 +247,18 @@
       .hidden {
         display: none !important;
       }
+
+      .image-row {
+        display: flex;
+        gap: 1rem;
+      }
+
+      .image-row img {
+        flex: 1;
+        min-width: 0;
+        max-width: 100%;
+        height: auto;
+      }
     </style>
 
     <!-- Styling for checkboxes and inputs -->
@@ -498,6 +510,36 @@
           gap: 0.5rem;
         }
       }
+
+      .object-summary {
+        display: flex;
+        flex-direction: row;
+        gap: 1rem;
+        width: 100%;
+
+        .object-segment {
+          flex: 1 1 0;
+          text-align: left;
+        }
+      }
+
+      .object-list {
+        display: flex;
+        flex-direction: column;
+
+        .object-list-item {
+          background-color: #0008;
+          margin-top: 0.5rem;
+          margin-bottom: 0.5rem;
+
+          display: flex;
+          flex-direction: row;
+
+          .object-info {
+            max-width: 250px;
+          }
+        }
+      }
     </style>
   </head>
   <body>
@@ -719,22 +761,58 @@
           <div class="warn-field row">
             <div class="icon">[!]</div>
             <div class="col">
-              <b>X scale factor looks sus</b>
+              <b>POTENTIALLY BAD LANDMARK — X scale factor looks sus</b>
               <p>It is expected that X scale factor is roughly equal to your aspect ratio. This is fine if:</p>
               <ul>
                 <li>You're running your game in windowed mode</li>
                 <li>You're running your game at non-native resolution</li>
+                <li>You're using a second monitor or a different computer</li>
               </ul>
-              <p>Calculated aspect ratio is <span id="arnm_result"></span>.</p>
-              <p>However, it may also be a sign that something went wrong. If none of the above apply to you, you should try exporting a different object as your landmark.</p>
+              <p>Your monitor's aspect ratio is 1:<span id="arnm_monitor_ar"></span>.</p>
+              <p>Calculated aspect ratio is 1:<span id="arnm_result"></span>.</p>
+              <p>&nbsp;</p>
+              <b>HOWEVER:</b>
+              <p>If you're seeing this, your landmark may be deformed. If you're using a deformed landmark, your character will not be unsquished correctly (though other fixes should be applied correctly).</p>
+
               <p>
                 This can also happen if your <code>.obj</code> file contained your (or any other) character (or any other animated object).
                 <b>Note that landmark should be present in the output geometry as well. Landmark should also NOT contain any animated items.</b>
               </p>
+              <p>&nbsp;</p>
+              <p style="text-align: center"><small>Example of bad and good landmarks:<br/>&nbsp;</small></p>
+
+              <div class="image-row">
+                <img src="./img/bad-landmark-example.webp" />
+                <img src="./img/good-landmark.webp" />
+              </div>
             </div>
           </div>
         </div>
       </section>
+
+      <!-- <section id="object-list" class="warnings">
+        <h1>We hebben een serieus probleem.</h1>
+        <p></p>
+
+        <div class="object-summary">
+          <div class="results-segment">
+            <h3>Landmark objects</h3>
+            <p>There should only be one.</p>
+
+            <div id="object-list-landmark" class="object-list">
+
+            </div>
+
+          </div>
+
+          <div class="results-segment">
+            <h3>Output geometry objects</h3>
+            <div id="object-list-output" class="object-list">
+
+            </div>
+          </div>
+        </div>
+      </section> -->
 
       <section id="results-ready" class="results hidden">
         <h1>Cool.</h1>
